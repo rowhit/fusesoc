@@ -170,6 +170,37 @@ def list_systems(args):
         if core.get_tool({'flow' : 'synth', 'tool' : None}):
             print(str(core.name))
 
+def run_flow(args):
+    stages = (args.setup, args.build, args.launch)
+    #Run all stages by default if no stage flags are set
+    if  stages == (False, False, False):
+        do_configure = True
+        do_build     = True
+        do_run       = True
+        #FIXME: Is (True, False, True a valid combination?
+#    elif stages == (True, False, True):
+#        logger.error("Configure and run without build is invalid")
+#        exit(1)
+    else:
+        do_configure = args.setup
+        do_build     = args.build
+        do_run       = args.launch
+
+    #FIXME: Need something clever here instead of a hard-coded list.
+    #Problem is that tool_type is used to calculate work_root and
+    #select error messages in run_backend. What to do?
+    if args.tool in ['ghdl', 'icarus', 'isim', 'modelsim', 'rivierapro', 'verilator', 'xsim']:
+        tool_type = 'simulator'
+    elif args.tool in ['icestorm', 'ise', 'quartus', 'vivado']:
+        tool_type = 'build'
+
+    flags = {'tool'   : args.tool,
+             'target' : args.target}
+    run_backend(tool_type,
+                not args.no_export,
+                do_configure, do_build, do_run,
+                flags, args.system, args.backendargs)
+
 def run_backend(tool_type, export, do_configure, do_build, do_run, flags, system, backendargs):
     if tool_type == 'simulator':
         tool_type_short = 'sim'
@@ -368,6 +399,60 @@ def main():
     # list-paths subparser
     parser_list_paths = subparsers.add_parser('list-paths', help='Display the search order for core root paths')
     parser_list_paths.set_defaults(func=list_paths)
+
+    #FIXME: Need to decide a syntax, especially wrt placement of target and use-flags.
+    #
+    # fusesoc <global options> run...
+    # Alt 1
+    # ...run <run options> target <target options> system <system options>
+    # where run_options == stages, no-export, tool etc.
+    # target_options == use flags
+    # system_options == args passed to backend
+    #This needs an explicit target
+
+    # Alt 2
+    # ...run <run options> system <system options>
+    # where run_options == stages, no-export, tool, target etc
+    # system_options == use flags + args passed to backend
+    # Needs no explicit target (fallback target inferred from flags)
+    # All configure options in one place,  but use flags are terminated before EDA API,
+    # so can't reuse parameter parsing logic from edatools.py as that happens after EDA API
+
+    # Alt 3
+    # ...run <run options> system <system options> target <target options>
+    # Hmmm... complicated parsing? Both system and target must be known to know available system_options.
+
+    # Alt 4
+    # ...run <run options> system <system options>
+    # where run_options == use flags + stages, no-export, tool, target etc
+    # system_options == args passed to backend
+    # Slight variation of Alt 2 where use flags are set in run_options instead
+
+    # Alt 5
+    # ...run <run options> system <system options>
+    # Alt 4, but add a separate --flags option in run_options where all flags go. E.g.
+    # --flags=bool_arg,int_arg=4,str_arg="this_already_feels_awkward"
+
+    #Think I prefer alt 4. Might need special syntax (instead of being a new type of parameter) in CAPI2
+    #Non-issue for CAPI1 as we won't support use-flags there.
+    #Just need to dynamically create list of useflags for --help. Maybe cheat a bit and wait with this?
+    # It does require system to be known. I fear this part a bit.
+
+    #Alt 0
+    #Only allow specifying useflags in core files for now. Still require thinking about syntax for defining
+    # and requesting them. Maybe even cheat and wait a bit with the definition part.
+
+    # run subparser
+    parser_run = subparsers.add_parser('run', help="Start a tool flow")
+    parser_run.add_argument('tool', help="Select tool flow")
+    parser_sim.add_argument('--no-export', action='store_true', help='Reference source files from their current location instead of exporting to a build tree')
+    parser_run.add_argument('--setup', action='store_true', help="Run setup stage")
+    parser_run.add_argument('--build', action='store_true', help="Run build stage")
+    parser_run.add_argument('--launch', action='store_true', help="Run launch stage")
+    parser_run.add_argument('--target', help='Override default target')
+    parser_run.add_argument('system', help='Select a system to operate on')
+    parser_run.add_argument('backendargs', nargs=argparse.REMAINDER)
+    parser_run.set_defaults(func=run_flow)
 
     # sim subparser
     parser_sim = subparsers.add_parser('sim', help='Setup and run a simulation')

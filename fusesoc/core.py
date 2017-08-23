@@ -172,8 +172,9 @@ class Core:
     def get_scripts(self, flags):
         scripts = {}
         if self.scripts:
+            flow = self._get_flow(flags['tool'])
             env = {'BUILD_ROOT' : Config().build_root}
-            if flags['flow'] is 'sim':
+            if 'flow' is 'sim':
                 for s in ['pre_build_scripts', 'pre_run_scripts', 'post_run_scripts']:
                     v = getattr(self.scripts, s)
                     if v:
@@ -181,7 +182,7 @@ class Core:
             #For backwards compatibility we only use the script from the
             #top-level core in synth flows. We also rename them here to match
             #the backend stages and set the SYSTEM_ROOT env var
-            elif flags['flow'] is 'synth' and flags['is_toplevel']:
+            elif 'flow' is 'synth' and flags['is_toplevel']:
                 env['SYSTEM_ROOT'] = self.files_root
                 v = self.scripts.pre_synth_scripts
                 if v:
@@ -195,7 +196,7 @@ class Core:
         self._debug("Getting toplevel for flags {}".format(str(flags)))
         if flags['tool'] == 'verilator':
             toplevel = self.verilator.top_module
-        elif flags['flow'] == 'synth':
+        elif self._get_flow(flags['tool']) == 'synth':
             toplevel = self.backend.top_module
         elif 'target' in flags and flags['target']:
             toplevel = flags['target']
@@ -208,7 +209,7 @@ class Core:
         self._debug("Getting tool for flags {}".format(str(flags)))
         tool = None
         if flags['tool']:
-            tool =  flags['tool']
+            tool = flags['tool']
         elif flags['flow'] == 'sim':
             if len(self.simulators) > 0:
                 tool = self.simulators[0]
@@ -286,6 +287,12 @@ class Core:
                 else:
                     raise RuntimeError('Cannot find %s in :\n\t%s\n\t%s'
                                   % (f, self.files_root, self.core_root))
+
+    def _get_flow(self, tool):
+        if tool in ['ghdl', 'icarus', 'isim', 'modelsim', 'rivierapro', 'verilator', 'xsim']:
+            return 'sim'
+        elif tool in ['icestorm', 'ise', 'quartus', 'vivado']:
+            return 'synth'
 
     def _merge_system_file(self, system_file, config):
         def _replace(sec, src=None, dst=None):
