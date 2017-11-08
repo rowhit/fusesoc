@@ -8,6 +8,30 @@ import yaml
 from fusesoc.utils import Launcher
 logger = logging.getLogger(__name__)
 
+def yaml_merge(eda_api_file):
+    print("root: " + eda_api_file)
+    def merge(d1, d2):
+        for k in d2:
+            if k in d1 and isinstance(d1[k], dict) and isinstance(d2[k], dict):
+                merge(d1[k], d2[k])
+            elif k in d1 and isinstance(d1[k], list) and isinstance(d2[k], list):
+                d1[k] += d2[k]
+            else:
+                d1[k] = d2[k]
+    eda_api = yaml.load(open(eda_api_file))
+    if eda_api is None:
+        eda_api = {}
+    if eda_api and 'include' in eda_api:
+        incfiles = eda_api.pop('include')
+
+        for f in incfiles:
+            print(f)
+            if os.path.exists(f):
+                merge(eda_api, yaml_merge(f))
+            else:
+                raise RuntimeError("Can't find EDA API file '{}' included from '{}'".format(f, eda_api_file))
+    return eda_api
+
 class FileAction(argparse.Action):
     def __call__(self, parser, namespace, values, option_string=None):
         path = os.path.expandvars(values[0])
@@ -18,7 +42,7 @@ class FileAction(argparse.Action):
 class EdaTool(object):
 
     def __init__(self, eda_api_file, work_root):
-        eda_api = yaml.load(open(eda_api_file))
+        eda_api = yaml_merge(eda_api_file)
         self.name = eda_api['name']
         _tool_name = self.__class__.__name__.lower()
         self.tool_options = eda_api['tool_options'][_tool_name]
